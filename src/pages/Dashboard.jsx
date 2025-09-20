@@ -4,12 +4,21 @@ import Logo from '../components/Logo.jsx';
 
 const MONIQ_CHART_URL = import.meta.env.VITE_MONIQ_CHART_URL;
 
-/**
- * FIXES:
- * - Không bỏ lỡ thời điểm nến đóng: phát hiện khi đổi candleId (id mới != id cũ)
- *   và chấm điểm dựa trên NẾN TRƯỚC đó, tránh phụ thuộc c.isClosed trong khoảng rất ngắn.
- * - Mở rộng bố cục: grid 4 cột, chart chiếm 3 cột (rộng hơn), height tăng.
- */
+// ====== CONFIG ======
+// Mặc định 60s/nến. Có thể override bằng VITE_MONIQ_INTERVAL_SEC nếu Moniq dùng TF khác.
+const TF_SEC = Number(import.meta.env.VITE_MONIQ_INTERVAL_SEC || 60);
+
+// Lấy giờ server Binance để tránh lệch clock máy người dùng (~50-500ms hoặc hơn)
+async function getServerDriftMs() {
+  try {
+    const r = await fetch('https://fapi.binance.com/fapi/v1/time', { cache: 'no-store' });
+    const { serverTime } = await r.json();
+    return serverTime - Date.now();
+  } catch {
+    return 0;
+  }
+}
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
 export default function Dashboard() {
   return (
@@ -19,14 +28,13 @@ export default function Dashboard() {
         <div className="text-xs text-neutral-400">Admin</div>
       </div>
 
-      {/* layout rộng hơn: 4 cột, chart span 3 */}
       <div className="mx-auto max-w-7xl px-5 grid grid-cols-1 md:grid-cols-4 gap-4">
         <section className="md:col-span-3 rounded-2xl border border-white/10 bg-neutral-900/40 overflow-hidden">
           <div className="p-4 text-neutral-300">Biểu đồ nến (Moniq)</div>
           <iframe
             title="Moniq Candle Chart"
             src={MONIQ_CHART_URL}
-            className="w-full h-[640px] bg-black"   // tăng chiều cao
+            className="w-full h-[640px] bg-black"
             referrerPolicy="no-referrer"
           />
           <div className="p-3 text-[11px] text-neutral-500">© TOOLMONIQ — for educational use only.</div>
@@ -43,37 +51,52 @@ export default function Dashboard() {
 function SignalBox() {
   const [locked, setLocked] = React.useState(null); // 'BUY' | 'SELL' | null
   const [stats, setStats] = React.useState(()=> loadStats());
-  const lastRef = React.useRef({ id: null, open: 0, close: 0 });
+  const [countdown, setCountdown] = React.useState('—s');
+
+  // lưu open/close của nến đang chạy để chấm điểm khi nến đóng
+  const curRef = React.useRef({ open: 0, close: 0, id: null });
+  const driftRef = React.useRef(0);
 
   React.useEffect(()=>{
     let alive = true;
-    const tick = async () => {
-      if (!alive) return;
-      const c = await getMoniqCandleState(); // {open, close, id, isClosed?}
+    (async () => {
+      driftRef.current = await getServerDriftMs(); // đồng bộ time
+      const TF_MS = TF_SEC * 1000;
 
-      // 1) nếu chưa có quyết định cho nến hiện tại → xin dự đoán
-      if (!locked) {
-        const p = await getMoniqPrediction();
-        setLocked(p);
-      }
+      const nowMs = () => Date.now() + driftRef.current;
+      const curId = () => Math.floor(nowMs() / TF_MS);
+      const nextBoundaryMs = () => (curId()+1) * TF_MS;
 
-      // 2) Nếu đổi candleId → tức nến trước đã đóng → chấm điểm nến trước
-      const last = lastRef.current;
-      if (last.id !== null && c.id !== last.id && locked) {
-        const up = last.close >= last.open;
-        const correct = (up && locked==='BUY') || (!up && locked==='SELL');
-        const ns = { correct: stats.correct + (correct?1:0), total: stats.total + 1 };
-        setStats(ns); saveStats(ns);
-        setLocked(null); // reset để dự đoán cho nến mới
-      }
+      // đồng bộ tới biên nến kế tiếp để prediction khớp biểu đồ
+      const alignAndLoop = async () => {
+        while (alive) {
+          // 1) nếu chưa có dự đoán cho nến hiện tại -> sinh dự đoán (cố định đến khi đóng nến)
+          if (!locked) {
+            const p = await getMoniqPrediction();
+            setLocked(p);
+          }
+          // 2) countdown tới thời điểm đóng nến
+          const waitMs = Math.max(50, nextBoundaryMs() - nowMs());
+          setCountdown((waitMs/1000).toFixed(0) + 's');
+          await sleep(Math.min(waitMs, 1000)); // cập nhật countdown mỗi <=1s
 
-      // 3) cập nhật ref với dữ liệu mới nhất
-      lastRef.current = { id: c.id, open: c.open, close: c.close };
-
-      // chạy lại
-      setTimeout(tick, 1000); // poll 1s để bắt chính xác thời điểm đổi nến
-    };
-    tick();
+          // 3) nếu đến biên -> chấm điểm nến vừa đóng, reset và lặp
+          if (nextBoundaryMs() - nowMs() <= 200) {
+            // cập nhật close mới nhất của nến vừa đóng
+            const last = await getMoniqCandleState();
+            curRef.current = { open: last.open, close: last.close, id: curId() };
+            if (locked) {
+              const up = curRef.current.close >= curRef.current.open;
+              const correct = (up && locked==='BUY') || (!up && locked==='SELL');
+              const ns = { correct: stats.correct + (correct?1:0), total: stats.total + 1 };
+              setStats(ns); saveStats(ns);
+            }
+            setLocked(null); // chuẩn bị dự đoán cho nến mới
+          }
+        }
+      };
+      alignAndLoop();
+    })();
     return ()=>{ alive = false; };
   }, [locked, stats]);
 
@@ -86,8 +109,9 @@ function SignalBox() {
         <div className={`mt-2 text-3xl font-semibold ${locked==='BUY'?'text-emerald-400':'text-rose-400'}`}>
           {locked ?? 'Đang phân tích…'}
         </div>
+        <div className="mt-1 text-xs text-neutral-400">Đóng nến sau: <span className="font-mono">{countdown}</span></div>
         <div className="mt-2 text-xs text-neutral-500">
-          *Kết quả dự đoán sẽ được cố định cho đến khi cây nến hiện tại đóng.
+          *Dự đoán luôn được “khóa” cho tới khi nến hiện tại đóng, thời gian đồng bộ theo server Binance.
         </div>
       </div>
 
@@ -118,15 +142,16 @@ function saveStats(s){
 }
 
 // ===== MOCK APIs — thay bằng feed Moniq =====
-// Vẫn dùng mock 10s/1 nến, nhưng logic mới dựa vào thay đổi id nên không bỏ lỡ thời điểm đóng nến.
+// Ở đây chỉ dùng để demo OHLC hiện tại; khi nối WS/REST thật, trả về OHLC của nến đang chạy.
 let _t0 = Date.now();
 function mockCandle(){
   const elapsed = (Date.now() - _t0)/1000;
-  const slot = Math.floor(elapsed/10);      // id thay đổi mỗi 10s
-  const within = elapsed - slot*10;
+  const tf = TF_SEC;
+  const slot = Math.floor(elapsed/tf);
+  const within = elapsed - slot*tf;
   const open = 100 + slot;
-  const close = open + Math.sin(within)*0.5;
-  return {open, close, id:slot, isClosed: within>=9.5};
+  const close = open + Math.sin((within/tf)*Math.PI*2)*0.5;
+  return {open, close, id:slot};
 }
 export async function getMoniqCandleState(){ return mockCandle(); }
 export async function getMoniqPrediction(){ return Math.random()>0.5 ? 'BUY' : 'SELL'; }
