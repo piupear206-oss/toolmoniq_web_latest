@@ -84,7 +84,6 @@ function Kpi({label, value}) {
   );
 }
 
-// Local stats
 function loadStats(){
   try { return JSON.parse(localStorage.getItem('moniq_stats')) || {correct:0,total:0}; }
   catch { return {correct:0,total:0}; }
@@ -93,7 +92,6 @@ function saveStats(s){
   try { localStorage.setItem('moniq_stats', JSON.stringify(s)); } catch {}
 }
 
-// MOCK APIs — thay bằng feed Moniq
 let _t0 = Date.now();
 function mockCandle(){
   const elapsed = (Date.now() - _t0)/1000;

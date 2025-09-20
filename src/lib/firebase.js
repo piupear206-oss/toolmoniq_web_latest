@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,10 +19,4 @@ if (missing.length) {
 
 export const app = initializeApp(cfg);
 export const auth = getAuth(app);
-
-export const getInvisibleRecaptcha = (containerId = 'recaptcha-container') => {
-  if (!window.recaptchaVerifier) {
-    window.recaptchaVerifier = new RecaptchaVerifier(getAuth(), containerId, { size: 'invisible' });
-  }
-  return window.recaptchaVerifier;
-};
+export const db = getFirestore(app);

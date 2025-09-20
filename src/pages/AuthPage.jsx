@@ -1,14 +1,12 @@
 import React from 'react';
 import Logo from '../components/Logo.jsx';
-import { auth, getInvisibleRecaptcha } from '../lib/firebase.js';
+import { auth, db } from '../lib/firebase.js';
 import {
   signInWithEmailAndPassword,
-  PhoneAuthProvider,
-  signInWithCredential,
-  linkWithCredential,
-  EmailAuthProvider,
-  updatePassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 // Chuẩn hoá số VN về E.164: "0944..." -> "+84944..."
 function toE164VN(input) {
@@ -19,11 +17,6 @@ function toE164VN(input) {
   if (/^[1-9]\d{7,12}$/.test(s)) return "+84" + s;
   return s;
 }
-
-const phone2email = (phone) => {
-  const p = (phone || '').replace(/\s+/g,'').trim();
-  return `${p}@toolmoniq.local`;
-};
 
 export default function AuthPage() {
   const [tab, setTab] = React.useState('login'); // login | register | forgot
@@ -48,8 +41,6 @@ export default function AuthPage() {
         {tab==='login' && <LoginForm />}
         {tab==='register' && <RegisterForm />}
         {tab==='forgot' && <ForgotForm />}
-
-        <div id="recaptcha-container"></div>
       </div>
     </div>
   );
@@ -63,8 +54,10 @@ function LoginForm() {
   const onSubmit = async (e) => {
     e.preventDefault(); setErr('');
     try {
-      const e164 = toE164VN(phone);
-      const email = phone2email(e164);
+      const phoneKey = toE164VN(phone);
+      const snap = await getDoc(doc(db, 'phone_map', phoneKey));
+      if (!snap.exists()) throw new Error('Số điện thoại chưa được đăng ký');
+      const { email } = snap.data();
       await signInWithEmailAndPassword(auth, email, password);
     } catch (e) { setErr(e.message); }
   };
@@ -81,101 +74,56 @@ function LoginForm() {
 
 function RegisterForm() {
   const [phone, setPhone] = React.useState('');
+  const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [otpSent, setOtpSent] = React.useState(false);
-  const [otp, setOtp] = React.useState('');
   const [err, setErr] = React.useState('');
 
-  const sendOTP = async () => {
-    setErr('');
-    try {
-      const e164 = toE164VN(phone);
-      const verifier = getInvisibleRecaptcha();
-      const provider = new PhoneAuthProvider(auth);
-      const verificationId = await provider.verifyPhoneNumber(e164, verifier);
-      window._verificationId = verificationId;
-      setOtpSent(true);
-    } catch(e) { setErr(e.message); }
-  };
-
-  const verifyAndCreate = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault(); setErr('');
     try {
-      const cred = PhoneAuthProvider.credential(window._verificationId, otp);
-      const { user } = await signInWithCredential(auth, cred);
-      const e164 = toE164VN(phone);
-      const email = phone2email(e164);
-      const emailCred = EmailAuthProvider.credential(email, password);
-      await linkWithCredential(user, emailCred);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const phoneKey = toE164VN(phone);
+      await setDoc(doc(db, 'phone_map', phoneKey), {
+        uid: cred.user.uid, email, phone: phoneKey, createdAt: Date.now()
+      });
     } catch(e) { setErr(e.message); }
   };
 
   return (
-    <form onSubmit={verifyAndCreate} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx (vd: +84944301226)" />
+    <form onSubmit={onSubmit} className="space-y-3">
+      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx" />
+      <Input label="Email (dùng để khôi phục mật khẩu)" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
       <Input label="Mật khẩu (bạn đặt)" type="password" value={password} onChange={setPassword} />
-      {!otpSent ? (
-        <button type="button" onClick={sendOTP} className="w-full rounded-xl bg-indigo-600 py-2 font-medium">
-          Gửi OTP & Đăng ký
-        </button>
-      ) : (
-        <>
-          <Input label="Mã OTP" value={otp} onChange={setOtp} />
-          <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Xác minh & Hoàn tất</button>
-        </>
-      )}
       {err && <p className="text-rose-400 text-sm">{err}</p>}
+      <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Tạo tài khoản</button>
     </form>
   );
 }
 
 function ForgotForm() {
   const [phone, setPhone] = React.useState('');
-  const [newPwd, setNewPwd] = React.useState('');
-  const [otpSent, setOtpSent] = React.useState(false);
-  const [otp, setOtp] = React.useState('');
   const [err, setErr] = React.useState('');
   const [done, setDone] = React.useState(false);
 
-  const sendOTP = async () => {
-    setErr('');
-    try {
-      const e164 = toE164VN(phone);
-      const verifier = getInvisibleRecaptcha();
-      const provider = new PhoneAuthProvider(auth);
-      const verificationId = await provider.verifyPhoneNumber(e164, verifier);
-      window._verificationId = verificationId;
-      setOtpSent(true);
-    } catch(e) { setErr(e.message); }
-  };
-
-  const verifyAndReset = async (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault(); setErr('');
     try {
-      const cred = PhoneAuthProvider.credential(window._verificationId, otp);
-      const { user } = await signInWithCredential(auth, cred);
-      await updatePassword(user, newPwd);
+      const phoneKey = toE164VN(phone);
+      const snap = await getDoc(doc(db, 'phone_map', phoneKey));
+      if (!snap.exists()) throw new Error('Số điện thoại chưa được đăng ký');
+      const { email } = snap.data();
+      await sendPasswordResetEmail(auth, email);
       setDone(true);
     } catch(e) { setErr(e.message); }
   };
 
-  if (done) return <div className="text-emerald-400 text-sm">Đổi mật khẩu thành công. Bạn có thể đăng nhập lại.</div>;
+  if (done) return <div className="text-emerald-400 text-sm">Đã gửi email đặt lại mật khẩu tới địa chỉ đã đăng ký.</div>;
 
   return (
-    <form onSubmit={verifyAndReset} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx (vd: +84944301226)" />
-      <Input label="Mật khẩu mới" type="password" value={newPwd} onChange={setNewPwd} />
-      {!otpSent ? (
-        <button type="button" onClick={sendOTP} className="w-full rounded-xl bg-indigo-600 py-2 font-medium">
-          Gửi OTP & Đặt lại
-        </button>
-      ) : (
-        <>
-          <Input label="Mã OTP" value={otp} onChange={setOtp} />
-          <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Xác minh & Đổi mật khẩu</button>
-        </>
-      )}
+    <form onSubmit={onSubmit} className="space-y-3">
+      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx" />
       {err && <p className="text-rose-400 text-sm">{err}</p>}
+      <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Gửi email đặt lại mật khẩu</button>
     </form>
   );
 }
