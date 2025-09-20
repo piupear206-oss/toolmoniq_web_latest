@@ -4,8 +4,9 @@ import Logo from '../components/Logo.jsx';
 
 const WS_BASE = (import.meta.env.VITE_MONIQ_WS_URL || '').replace(/\/?$/, '/');
 const WS_TOKEN = import.meta.env.VITE_MONIQ_WS_TOKEN || '';
-const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
 
+// helpers
+const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
 function buildSIOUrl() {
   let u = WS_BASE + '?EIO=4&transport=websocket';
   if (WS_TOKEN) u = WS_BASE + `?token=${encodeURIComponent(WS_TOKEN)}&EIO=4&transport=websocket`;
@@ -45,92 +46,119 @@ function SignalBox(){
   const [locked, setLocked] = React.useState(null);       // 'BUY' | 'SELL'
   const [stats, setStats] = React.useState(()=>loadStats());
   const [countdown, setCountdown] = React.useState('—s');
-  const [dbg, setDbg] = React.useState('WS: connecting…');
+  const [dbg, setDbg] = React.useState('WS: init…');
 
-  // Dựng OHLC theo id từ stream "BTCUSDT"
+  // State
   const curIdRef = React.useRef(null);
   const ohlcRef = React.useRef({}); // id -> {o,h,l,c}
   const lastScoredIdRef = React.useRef(null);
   const prevTimeRef = React.useRef(null);
+  const lastTimeMsgAtRef = React.useRef(0);
 
   React.useEffect(()=> {
-    let ws;
-    (async () => {
-      const url = buildSIOUrl();
-      ws = new WebSocket(url);
-      ws.addEventListener('open', ()=> setDbg(d=>d+ '\\nWS open'));
-      ws.addEventListener('close', ()=> setDbg(d=>d+ '\\nWS closed'));
+    let stop = false;
+    let backoff = 1000;
+    async function connect(){
+      while (!stop) {
+        try {
+          const url = buildSIOUrl();
+          setDbg(d=> `${d.split('\\n')[0] || ''}\\nWS connecting ${url}`);
+          const ws = new WebSocket(url);
 
-      ws.addEventListener('message', ev => {
-        const pkt = parseSioEvent(ev.data);
-        if (!pkt) return;
-        const { ev: event, payload } = pkt;
+          ws.addEventListener('open', ()=>{
+            setDbg(d=> d + '\\nWS open');
+            backoff = 1000;
+          });
 
-        // TIME event đếm 1..60 rồi quay về 1 (ảnh bạn chụp có TIME,60)
-        if (event === 'TIME') {
-          const t = Number(payload);
-          if (Number.isFinite(t)) {
-            const remain = Math.max(0, 60 - t);
-            setCountdown(remain + 's');
+          ws.addEventListener('close', (e)=>{
+            setDbg(d=> d + `\\nWS closed code=${e.code} reason=${e.reason || ''}`);
+          });
 
-            // Nếu TIME vừa chạm 60 → NẾN CŨ ĐÓNG. Chấm điểm ngay tại đây.
-            if (t === 60 && prevTimeRef.current !== 60) {
-              scoreCurrentAndReset();
+          ws.addEventListener('error', (e)=>{
+            setDbg(d=> d + '\\nWS error');
+          });
+
+          ws.addEventListener('message', ev => {
+            const pkt = parseSioEvent(ev.data);
+            if (!pkt) return;
+            const { ev: event, payload } = pkt;
+
+            if (event === 'TIME') {
+              const t = Number(payload);
+              if (Number.isFinite(t)) {
+                lastTimeMsgAtRef.current = Date.now();
+                const remain = Math.max(0, 60 - t);
+                setCountdown(remain + 's');
+                if (t === 60 && prevTimeRef.current !== 60) scoreAndReset();
+                if (t === 1 && prevTimeRef.current === 60 && !locked) {
+                  setLocked(Math.random()>0.5 ? 'BUY':'SELL'); // TODO replace with model
+                }
+                prevTimeRef.current = t;
+              }
+              return;
             }
-            // Nếu TIME quay về 1 → bắt đầu nến mới: khoá dự đoán nếu chưa có.
-            if (t === 1 && prevTimeRef.current === 60 && !locked) {
-              setLocked(Math.random()>0.5 ? 'BUY':'SELL'); // TODO: thay bằng model thật
+
+            if (/^[A-Z]+USDT$/.test(event) && payload && typeof payload === 'object') {
+              const id = Number(payload.id);
+              const px = Number(payload.close ?? payload.price ?? payload.c);
+              if (!Number.isFinite(id) || !Number.isFinite(px)) return;
+              if (curIdRef.current === null || id !== curIdRef.current) {
+                curIdRef.current = id;
+                if (!ohlcRef.current[id]) ohlcRef.current[id] = { o: px, h: px, l: px, c: px };
+              } else {
+                const k = ohlcRef.current[id];
+                if (px > k.h) k.h = px;
+                if (px < k.l) k.l = px;
+                k.c = px;
+              }
+              return;
             }
+          });
 
-            prevTimeRef.current = t;
-          }
-          return;
-        }
-
-        // Kênh symbol: 'BTCUSDT' → có { id, close }
-        if (/^[A-Z]+USDT$/.test(event) && payload && typeof payload === 'object') {
-          const id = Number(payload.id);
-          const px = Number(payload.close ?? payload.price ?? payload.c);
-          if (!Number.isFinite(id) || !Number.isFinite(px)) return;
-
-          // id thay đổi → nến đã sang id mới; mở record mới nếu chưa có
-          if (curIdRef.current === null || id !== curIdRef.current) {
-            curIdRef.current = id;
-            if (!ohlcRef.current[id]) {
-              ohlcRef.current[id] = { o: px, h: px, l: px, c: px };
+          // watchdog: if không thấy TIME >5s, dùng fallback local-clock
+          const watchdog = setInterval(()=>{
+            const now = Date.now();
+            if (now - lastTimeMsgAtRef.current > 5000) {
+              // tự tạo countdown theo local clock (khớp 60s) → không hoàn hảo nhưng có nhịp
+              const sec = new Date().getUTCSeconds(); // 0..59
+              const t = sec === 0 ? 60 : sec;
+              const remain = Math.max(0, 60 - t);
+              setCountdown(remain + 's');
+              if (t === 60 && prevTimeRef.current !== 60) scoreAndReset();
+              if (t === 1 && prevTimeRef.current === 60 && !locked) {
+                setLocked(Math.random()>0.5 ? 'BUY':'SELL');
+              }
+              prevTimeRef.current = t;
             }
-          } else {
-            const k = ohlcRef.current[id] || (ohlcRef.current[id] = { o: px, h: px, l: px, c: px });
-            if (px > k.h) k.h = px;
-            if (px < k.l) k.l = px;
-            k.c = px;
-          }
-          return;
-        }
+          }, 500);
 
-        // LAST_RESULTS: tham khảo
-        if (event === 'LAST_RESULTS') {
-          setDbg(d => d + '\\nLAST_RESULTS len=' + (payload?.length ?? 0));
-          return;
+          // await until closed
+          await new Promise(res => { ws.addEventListener('close', res, { once: true }); });
+          clearInterval(watchdog);
+        } catch(e) {
+          setDbg(d=> d + `\\nConnect error: ${e.message}`);
         }
-      });
-
-      function scoreCurrentAndReset(){
-        const id = curIdRef.current;
-        if (id == null || id === lastScoredIdRef.current) return;
-        const k = ohlcRef.current[id];
-        if (!k || !locked) return;
-        const up = k.c >= k.o;
-        const correct = (up && locked==='BUY') || (!up && locked==='SELL');
-        const ns = { correct: stats.correct + (correct?1:0), total: stats.total + 1 };
-        setStats(ns); saveStats(ns);
-        lastScoredIdRef.current = id;
-        setLocked(null);
+        // backoff reconnect
+        await sleep(backoff);
+        backoff = Math.min(backoff * 2, 15000);
       }
-    })();
-
-    return ()=>{ try{ ws && ws.close(); }catch{} };
+    }
+    connect();
+    return ()=>{ stop = True; };
   }, [locked, stats]);
+
+  function scoreAndReset(){
+    const id = curIdRef.current;
+    if (id == null || id === lastScoredIdRef.current) return;
+    const k = ohlcRef.current[id];
+    if (!k || !locked) return;
+    const up = k.c >= k.o;
+    const correct = (up && locked==='BUY') || (!up && locked==='SELL');
+    const ns = { correct: stats.correct + (correct?1:0), total: stats.total + 1 };
+    setStats(ns); saveStats(ns);
+    lastScoredIdRef.current = id;
+    setLocked(null);
+  }
 
   const pct = stats.total>0 ? ((stats.correct/stats.total)*100).toFixed(1) : '—';
 
