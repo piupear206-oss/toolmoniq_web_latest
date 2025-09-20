@@ -2,25 +2,22 @@
 import React from 'react';
 import Logo from '../components/Logo.jsx';
 
-const MONIQ_CHART_URL = import.meta.env.VITE_MONIQ_CHART_URL;
+const WS_BASE = (import.meta.env.VITE_MONIQ_WS_URL || '').replace(/\/?$/, '/');
+const WS_TOKEN = import.meta.env.VITE_MONIQ_WS_TOKEN || '';
+const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
 
-// ====== CONFIG ======
-// Mặc định 60s/nến. Có thể override bằng VITE_MONIQ_INTERVAL_SEC nếu Moniq dùng TF khác.
-const TF_SEC = Number(import.meta.env.VITE_MONIQ_INTERVAL_SEC || 60);
-
-// Lấy giờ server Binance để tránh lệch clock máy người dùng (~50-500ms hoặc hơn)
-async function getServerDriftMs() {
-  try {
-    const r = await fetch('https://fapi.binance.com/fapi/v1/time', { cache: 'no-store' });
-    const { serverTime } = await r.json();
-    return serverTime - Date.now();
-  } catch {
-    return 0;
-  }
+function buildSIOUrl() {
+  let u = WS_BASE + '?EIO=4&transport=websocket';
+  if (WS_TOKEN) u = WS_BASE + `?token=${encodeURIComponent(WS_TOKEN)}&EIO=4&transport=websocket`;
+  return u;
 }
-const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+function parseSioEvent(d){
+  if (typeof d !== 'string' || !d.startsWith('42')) return null;
+  try { const [ev, payload] = JSON.parse(d.slice(2)); return {ev, payload}; }
+  catch { return null; }
+}
 
-export default function Dashboard() {
+export default function Dashboard(){
   return (
     <main className="min-h-screen">
       <div className="mx-auto max-w-7xl px-5 py-4 flex items-center justify-between">
@@ -31,12 +28,8 @@ export default function Dashboard() {
       <div className="mx-auto max-w-7xl px-5 grid grid-cols-1 md:grid-cols-4 gap-4">
         <section className="md:col-span-3 rounded-2xl border border-white/10 bg-neutral-900/40 overflow-hidden">
           <div className="p-4 text-neutral-300">Biểu đồ nến (Moniq)</div>
-          <iframe
-            title="Moniq Candle Chart"
-            src={MONIQ_CHART_URL}
-            className="w-full h-[640px] bg-black"
-            referrerPolicy="no-referrer"
-          />
+          <iframe title="Moniq Candle Chart" src={import.meta.env.VITE_MONIQ_CHART_URL}
+                  className="w-full h-[640px] bg-black" referrerPolicy="no-referrer"/>
           <div className="p-3 text-[11px] text-neutral-500">© TOOLMONIQ — for educational use only.</div>
         </section>
 
@@ -48,56 +41,95 @@ export default function Dashboard() {
   );
 }
 
-function SignalBox() {
-  const [locked, setLocked] = React.useState(null); // 'BUY' | 'SELL' | null
-  const [stats, setStats] = React.useState(()=> loadStats());
+function SignalBox(){
+  const [locked, setLocked] = React.useState(null);       // 'BUY' | 'SELL'
+  const [stats, setStats] = React.useState(()=>loadStats());
   const [countdown, setCountdown] = React.useState('—s');
+  const [dbg, setDbg] = React.useState('WS: connecting…');
 
-  // lưu open/close của nến đang chạy để chấm điểm khi nến đóng
-  const curRef = React.useRef({ open: 0, close: 0, id: null });
-  const driftRef = React.useRef(0);
+  // Dựng OHLC theo id từ stream "BTCUSDT"
+  const curIdRef = React.useRef(null);
+  const ohlcRef = React.useRef({}); // id -> {o,h,l,c}
+  const lastScoredIdRef = React.useRef(null);
+  const prevTimeRef = React.useRef(null);
 
-  React.useEffect(()=>{
-    let alive = true;
+  React.useEffect(()=> {
+    let ws;
     (async () => {
-      driftRef.current = await getServerDriftMs(); // đồng bộ time
-      const TF_MS = TF_SEC * 1000;
+      const url = buildSIOUrl();
+      ws = new WebSocket(url);
+      ws.addEventListener('open', ()=> setDbg(d=>d+ '\\nWS open'));
+      ws.addEventListener('close', ()=> setDbg(d=>d+ '\\nWS closed'));
 
-      const nowMs = () => Date.now() + driftRef.current;
-      const curId = () => Math.floor(nowMs() / TF_MS);
-      const nextBoundaryMs = () => (curId()+1) * TF_MS;
+      ws.addEventListener('message', ev => {
+        const pkt = parseSioEvent(ev.data);
+        if (!pkt) return;
+        const { ev: event, payload } = pkt;
 
-      // đồng bộ tới biên nến kế tiếp để prediction khớp biểu đồ
-      const alignAndLoop = async () => {
-        while (alive) {
-          // 1) nếu chưa có dự đoán cho nến hiện tại -> sinh dự đoán (cố định đến khi đóng nến)
-          if (!locked) {
-            const p = await getMoniqPrediction();
-            setLocked(p);
-          }
-          // 2) countdown tới thời điểm đóng nến
-          const waitMs = Math.max(50, nextBoundaryMs() - nowMs());
-          setCountdown((waitMs/1000).toFixed(0) + 's');
-          await sleep(Math.min(waitMs, 1000)); // cập nhật countdown mỗi <=1s
+        // TIME event đếm 1..60 rồi quay về 1 (ảnh bạn chụp có TIME,60)
+        if (event === 'TIME') {
+          const t = Number(payload);
+          if (Number.isFinite(t)) {
+            const remain = Math.max(0, 60 - t);
+            setCountdown(remain + 's');
 
-          // 3) nếu đến biên -> chấm điểm nến vừa đóng, reset và lặp
-          if (nextBoundaryMs() - nowMs() <= 200) {
-            // cập nhật close mới nhất của nến vừa đóng
-            const last = await getMoniqCandleState();
-            curRef.current = { open: last.open, close: last.close, id: curId() };
-            if (locked) {
-              const up = curRef.current.close >= curRef.current.open;
-              const correct = (up && locked==='BUY') || (!up && locked==='SELL');
-              const ns = { correct: stats.correct + (correct?1:0), total: stats.total + 1 };
-              setStats(ns); saveStats(ns);
+            // Nếu TIME vừa chạm 60 → NẾN CŨ ĐÓNG. Chấm điểm ngay tại đây.
+            if (t === 60 && prevTimeRef.current !== 60) {
+              scoreCurrentAndReset();
             }
-            setLocked(null); // chuẩn bị dự đoán cho nến mới
+            // Nếu TIME quay về 1 → bắt đầu nến mới: khoá dự đoán nếu chưa có.
+            if (t === 1 && prevTimeRef.current === 60 && !locked) {
+              setLocked(Math.random()>0.5 ? 'BUY':'SELL'); // TODO: thay bằng model thật
+            }
+
+            prevTimeRef.current = t;
           }
+          return;
         }
-      };
-      alignAndLoop();
+
+        // Kênh symbol: 'BTCUSDT' → có { id, close }
+        if (/^[A-Z]+USDT$/.test(event) && payload && typeof payload === 'object') {
+          const id = Number(payload.id);
+          const px = Number(payload.close ?? payload.price ?? payload.c);
+          if (!Number.isFinite(id) || !Number.isFinite(px)) return;
+
+          // id thay đổi → nến đã sang id mới; mở record mới nếu chưa có
+          if (curIdRef.current === null || id !== curIdRef.current) {
+            curIdRef.current = id;
+            if (!ohlcRef.current[id]) {
+              ohlcRef.current[id] = { o: px, h: px, l: px, c: px };
+            }
+          } else {
+            const k = ohlcRef.current[id] || (ohlcRef.current[id] = { o: px, h: px, l: px, c: px });
+            if (px > k.h) k.h = px;
+            if (px < k.l) k.l = px;
+            k.c = px;
+          }
+          return;
+        }
+
+        // LAST_RESULTS: tham khảo
+        if (event === 'LAST_RESULTS') {
+          setDbg(d => d + '\\nLAST_RESULTS len=' + (payload?.length ?? 0));
+          return;
+        }
+      });
+
+      function scoreCurrentAndReset(){
+        const id = curIdRef.current;
+        if (id == null || id === lastScoredIdRef.current) return;
+        const k = ohlcRef.current[id];
+        if (!k || !locked) return;
+        const up = k.c >= k.o;
+        const correct = (up && locked==='BUY') || (!up && locked==='SELL');
+        const ns = { correct: stats.correct + (correct?1:0), total: stats.total + 1 };
+        setStats(ns); saveStats(ns);
+        lastScoredIdRef.current = id;
+        setLocked(null);
+      }
     })();
-    return ()=>{ alive = false; };
+
+    return ()=>{ try{ ws && ws.close(); }catch{} };
   }, [locked, stats]);
 
   const pct = stats.total>0 ? ((stats.correct/stats.total)*100).toFixed(1) : '—';
@@ -110,15 +142,14 @@ function SignalBox() {
           {locked ?? 'Đang phân tích…'}
         </div>
         <div className="mt-1 text-xs text-neutral-400">Đóng nến sau: <span className="font-mono">{countdown}</span></div>
-        <div className="mt-2 text-xs text-neutral-500">
-          *Dự đoán luôn được “khóa” cho tới khi nến hiện tại đóng, thời gian đồng bộ theo server Binance.
-        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Kpi label="Đã đúng" value={`${stats.correct}/${stats.total}`} />
         <Kpi label="Tỷ lệ đúng" value={`${pct}%`} />
       </div>
+
+      <pre className="mt-4 text-[10px] whitespace-pre-wrap text-neutral-400/70">{dbg}</pre>
     </div>
   );
 }
@@ -132,7 +163,6 @@ function Kpi({label, value}) {
   );
 }
 
-// ===== Local stats =====
 function loadStats(){
   try { return JSON.parse(localStorage.getItem('moniq_stats')) || {correct:0,total:0}; }
   catch { return {correct:0,total:0}; }
@@ -140,18 +170,3 @@ function loadStats(){
 function saveStats(s){
   try { localStorage.setItem('moniq_stats', JSON.stringify(s)); } catch {}
 }
-
-// ===== MOCK APIs — thay bằng feed Moniq =====
-// Ở đây chỉ dùng để demo OHLC hiện tại; khi nối WS/REST thật, trả về OHLC của nến đang chạy.
-let _t0 = Date.now();
-function mockCandle(){
-  const elapsed = (Date.now() - _t0)/1000;
-  const tf = TF_SEC;
-  const slot = Math.floor(elapsed/tf);
-  const within = elapsed - slot*tf;
-  const open = 100 + slot;
-  const close = open + Math.sin((within/tf)*Math.PI*2)*0.5;
-  return {open, close, id:slot};
-}
-export async function getMoniqCandleState(){ return mockCandle(); }
-export async function getMoniqPrediction(){ return Math.random()>0.5 ? 'BUY' : 'SELL'; }
