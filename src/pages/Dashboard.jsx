@@ -34,12 +34,10 @@ export default function Dashboard() {
 function SignalBox() {
   const [locked, setLocked] = React.useState(null); // 'BUY' | 'SELL' | null
   const [stats, setStats] = React.useState(()=> loadStats());
-  const [candle, setCandle] = React.useState({ open:0, close:0, isClosed:false, id:null });
 
   React.useEffect(()=>{
     const t = setInterval(async ()=>{
       const c = await getMoniqCandleState();
-      setCandle(c);
       if (!locked) {
         const p = await getMoniqPrediction();
         setLocked(p);
@@ -106,5 +104,5 @@ function mockCandle(){
   const isClosed = within>=9.5;
   return {open, close, isClosed, id:slot};
 }
-async function getMoniqCandleState(){ return mockCandle(); }
-async function getMoniqPrediction(){ return Math.random()>0.5 ? 'BUY' : 'SELL'; }
+export async function getMoniqCandleState(){ return mockCandle(); }
+export async function getMoniqPrediction(){ return Math.random()>0.5 ? 'BUY' : 'SELL'; }

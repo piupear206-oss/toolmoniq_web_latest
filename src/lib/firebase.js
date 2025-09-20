@@ -1,8 +1,8 @@
-// src/lib/firebase.js
+
 import { initializeApp } from 'firebase/app';
 import { getAuth, RecaptchaVerifier } from 'firebase/auth';
 
-const firebaseConfig = {
+const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -11,15 +11,18 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
 };
 
-export const app = initializeApp(firebaseConfig);
+const missing = Object.entries(cfg).filter(([k,v]) => !v).map(([k])=>k);
+if (missing.length) {
+  console.error('[TOOLMONIQ] Missing env:', missing.join(', '));
+  window.__TOOLMONIQ_ENV_ERROR__ = 'Thiếu biến môi trường: ' + missing.join(', ');
+}
+
+export const app = initializeApp(cfg);
 export const auth = getAuth(app);
 
-// reCAPTCHA vô hình cho Phone OTP
 export const getInvisibleRecaptcha = (containerId = 'recaptcha-container') => {
   if (!window.recaptchaVerifier) {
-    window.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-      size: 'invisible',
-    });
+    window.recaptchaVerifier = new RecaptchaVerifier(getAuth(), containerId, { size: 'invisible' });
   }
   return window.recaptchaVerifier;
 };

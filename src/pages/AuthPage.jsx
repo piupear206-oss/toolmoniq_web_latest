@@ -39,7 +39,6 @@ export default function AuthPage() {
         {tab==='register' && <RegisterForm />}
         {tab==='forgot' && <ForgotForm />}
 
-        {/* recaptcha container (invisible) */}
         <div id="recaptcha-container"></div>
       </div>
     </div>
