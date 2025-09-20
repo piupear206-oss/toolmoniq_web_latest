@@ -10,6 +10,16 @@ import {
   updatePassword,
 } from 'firebase/auth';
 
+// Chuẩn hoá số VN về E.164: "0944..." -> "+84944..."
+function toE164VN(input) {
+  let s = (input || "").replace(/\s+/g, "").replace(/[^0-9+]/g, "");
+  if (s.startsWith("+84")) return s;
+  if (s.startsWith("84")) return "+" + s;
+  if (s.startsWith("0")) return "+84" + s.slice(1);
+  if (/^[1-9]\d{7,12}$/.test(s)) return "+84" + s;
+  return s;
+}
+
 const phone2email = (phone) => {
   const p = (phone || '').replace(/\s+/g,'').trim();
   return `${p}@toolmoniq.local`;
@@ -53,14 +63,15 @@ function LoginForm() {
   const onSubmit = async (e) => {
     e.preventDefault(); setErr('');
     try {
-      const email = phone2email(phone);
+      const e164 = toE164VN(phone);
+      const email = phone2email(e164);
       await signInWithEmailAndPassword(auth, email, password);
     } catch (e) { setErr(e.message); }
   };
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84..." />
+      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx (vd: +84944301226)" />
       <Input label="Mật khẩu" type="password" value={password} onChange={setPassword} />
       {err && <p className="text-rose-400 text-sm">{err}</p>}
       <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Đăng nhập</button>
@@ -78,9 +89,10 @@ function RegisterForm() {
   const sendOTP = async () => {
     setErr('');
     try {
+      const e164 = toE164VN(phone);
       const verifier = getInvisibleRecaptcha();
       const provider = new PhoneAuthProvider(auth);
-      const verificationId = await provider.verifyPhoneNumber(phone, verifier);
+      const verificationId = await provider.verifyPhoneNumber(e164, verifier);
       window._verificationId = verificationId;
       setOtpSent(true);
     } catch(e) { setErr(e.message); }
@@ -91,7 +103,8 @@ function RegisterForm() {
     try {
       const cred = PhoneAuthProvider.credential(window._verificationId, otp);
       const { user } = await signInWithCredential(auth, cred);
-      const email = phone2email(phone);
+      const e164 = toE164VN(phone);
+      const email = phone2email(e164);
       const emailCred = EmailAuthProvider.credential(email, password);
       await linkWithCredential(user, emailCred);
     } catch(e) { setErr(e.message); }
@@ -99,7 +112,7 @@ function RegisterForm() {
 
   return (
     <form onSubmit={verifyAndCreate} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84..." />
+      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx (vd: +84944301226)" />
       <Input label="Mật khẩu (bạn đặt)" type="password" value={password} onChange={setPassword} />
       {!otpSent ? (
         <button type="button" onClick={sendOTP} className="w-full rounded-xl bg-indigo-600 py-2 font-medium">
@@ -127,9 +140,10 @@ function ForgotForm() {
   const sendOTP = async () => {
     setErr('');
     try {
+      const e164 = toE164VN(phone);
       const verifier = getInvisibleRecaptcha();
       const provider = new PhoneAuthProvider(auth);
-      const verificationId = await provider.verifyPhoneNumber(phone, verifier);
+      const verificationId = await provider.verifyPhoneNumber(e164, verifier);
       window._verificationId = verificationId;
       setOtpSent(true);
     } catch(e) { setErr(e.message); }
@@ -149,7 +163,7 @@ function ForgotForm() {
 
   return (
     <form onSubmit={verifyAndReset} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84..." />
+      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx (vd: +84944301226)" />
       <Input label="Mật khẩu mới" type="password" value={newPwd} onChange={setNewPwd} />
       {!otpSent ? (
         <button type="button" onClick={sendOTP} className="w-full rounded-xl bg-indigo-600 py-2 font-medium">
