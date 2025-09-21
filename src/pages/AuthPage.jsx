@@ -1,139 +1,131 @@
-import React from 'react';
-import Logo from '../components/Logo.jsx';
-import { auth, db } from '../lib/firebase.js';
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 
-// Chuẩn hoá số VN về E.164: "0944..." -> "+84944..."
-function toE164VN(input) {
-  let s = (input || "").replace(/\s+/g, "").replace(/[^0-9+]/g, "");
-  if (s.startsWith("+84")) return s;
-  if (s.startsWith("84")) return "+" + s;
-  if (s.startsWith("0")) return "+84" + s.slice(1);
-  if (/^[1-9]\d{7,12}$/.test(s)) return "+84" + s;
-  return s;
-}
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
+import { setSession, getSession, CREDS_KEY } from '../lib/session';
+
+const ADMIN_PHONE = '0944301226';
+const ADMIN_NAME = 'Liam Nguyen';
 
 export default function AuthPage() {
-  const [tab, setTab] = React.useState('login'); // login | register | forgot
-  return (
-    <div className="min-h-screen grid place-items-center">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-neutral-900/60 p-6">
-        <div className="mb-6 text-center">
-          <Logo large />
-          <p className="mt-1 text-sm text-neutral-400">Đăng nhập để vào TOOLMONIQ</p>
-        </div>
-
-        <div className="mb-4 grid grid-cols-3 gap-2 text-sm">
-          {['login','register','forgot'].map(k => (
-            <button key={k}
-              onClick={()=>setTab(k)}
-              className={`rounded-xl px-3 py-2 ${tab===k?'bg-neutral-800 text-white':'bg-neutral-800/40 text-neutral-300'}`}>
-              {k==='login'?'Đăng nhập':k==='register'?'Đăng ký':'Quên mật khẩu'}
-            </button>
-          ))}
-        </div>
-
-        {tab==='login' && <LoginForm />}
-        {tab==='register' && <RegisterForm />}
-        {tab==='forgot' && <ForgotForm />}
-      </div>
-    </div>
-  );
-}
-
-function LoginForm() {
-  const [phone, setPhone] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [err, setErr] = React.useState('');
-
-  const onSubmit = async (e) => {
-    e.preventDefault(); setErr('');
-    try {
-      const phoneKey = toE164VN(phone);
-      const snap = await getDoc(doc(db, 'phone_map', phoneKey));
-      if (!snap.exists()) throw new Error('Số điện thoại chưa được đăng ký');
-      const { email } = snap.data();
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (e) { setErr(e.message); }
-  };
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx (vd: +84944301226)" />
-      <Input label="Mật khẩu" type="password" value={password} onChange={setPassword} />
-      {err && <p className="text-rose-400 text-sm">{err}</p>}
-      <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Đăng nhập</button>
-    </form>
-  );
-}
-
-function RegisterForm() {
+  const nav = useNavigate();
+  const [tab, setTab] = React.useState('login');
   const [phone, setPhone] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [err, setErr] = React.useState('');
+  const [remember, setRemember] = React.useState(true);
+  const [msg, setMsg] = React.useState('');
 
-  const onSubmit = async (e) => {
-    e.preventDefault(); setErr('');
+  React.useEffect(()=>{
+    const s = getSession();
+    if (s) nav('/');
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const phoneKey = toE164VN(phone);
-      await setDoc(doc(db, 'phone_map', phoneKey), {
-        uid: cred.user.uid, email, phone: phoneKey, createdAt: Date.now()
-      });
-    } catch(e) { setErr(e.message); }
+      const saved = JSON.parse(localStorage.getItem(CREDS_KEY) || 'null');
+      if (saved) {
+        setPhone(saved.phone || '');
+        setEmail(saved.email || '');
+        setPassword(saved.password || '');
+      }
+    } catch {}
+  }, []);
+
+  const auth = getAuth();
+  const db = getFirestore();
+
+  function toE164(v){
+    const digits = (v||'').replace(/\D/g,'');
+    if (digits.startsWith('0')) return '+84' + digits.slice(1);
+    if (digits.startsWith('84')) return '+' + digits;
+    if (digits.startsWith('+')) return digits;
+    return '+84' + digits;
+  }
+
+  const handleLogin = async () => {
+    setMsg('');
+    try {
+      const e164 = toE164(phone);
+      const ref = doc(db, 'phone_map', e164);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) { setMsg('Số điện thoại chưa đăng ký.'); return; }
+      const { email } = snap.data();
+      await signInWithEmailAndPassword(auth, email, password);
+      const role = (phone === ADMIN_PHONE || (auth.currentUser?.displayName||'')===ADMIN_NAME) ? 'Admin':'Member';
+      const session = { uid: auth.currentUser.uid, phone, email, role, loginAt: Date.now() };
+      setSession(session);
+      if (remember) localStorage.setItem(CREDS_KEY, JSON.stringify({ phone, email, password }));
+      else localStorage.removeItem(CREDS_KEY);
+      try { localStorage.removeItem('moniq_stats'); } catch {}
+      nav('/');
+    } catch (e) {
+      setMsg('Đăng nhập thất bại: ' + (e?.message || e));
+    }
   };
 
-  return (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx" />
-      <Input label="Email (dùng để khôi phục mật khẩu)" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-      <Input label="Mật khẩu (bạn đặt)" type="password" value={password} onChange={setPassword} />
-      {err && <p className="text-rose-400 text-sm">{err}</p>}
-      <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Tạo tài khoản</button>
-    </form>
-  );
-}
-
-function ForgotForm() {
-  const [phone, setPhone] = React.useState('');
-  const [err, setErr] = React.useState('');
-  const [done, setDone] = React.useState(false);
-
-  const onSubmit = async (e) => {
-    e.preventDefault(); setErr('');
+  const handleRegister = async () => {
+    setMsg('');
     try {
-      const phoneKey = toE164VN(phone);
-      const snap = await getDoc(doc(db, 'phone_map', phoneKey));
-      if (!snap.exists()) throw new Error('Số điện thoại chưa được đăng ký');
+      if (!email) { setMsg('Vui lòng nhập Email khôi phục để đăng ký.'); return; }
+      await createUserWithEmailAndPassword(auth, email, password);
+      const e164 = toE164(phone);
+      await setDoc(doc(db,'phone_map', e164), {
+        phone: e164, email, uid: auth.currentUser.uid, at: Date.now()
+      });
+      setMsg('Đăng ký thành công. Bạn có thể đăng nhập.');
+      setTab('login');
+    } catch (e) {
+      setMsg('Đăng ký thất bại: ' + (e?.message || e));
+    }
+  };
+
+  const handleReset = async () => {
+    setMsg('');
+    try {
+      const e164 = toE164(phone);
+      const ref = doc(db, 'phone_map', e164);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) { setMsg('SĐT chưa đăng ký.'); return; }
       const { email } = snap.data();
       await sendPasswordResetEmail(auth, email);
-      setDone(true);
-    } catch(e) { setErr(e.message); }
+      setMsg('Đã gửi email đặt lại mật khẩu tới: ' + email);
+    } catch (e) {
+      setMsg('Không thể gửi email reset: ' + (e?.message || e));
+    }
   };
 
-  if (done) return <div className="text-emerald-400 text-sm">Đã gửi email đặt lại mật khẩu tới địa chỉ đã đăng ký.</div>;
-
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <Input label="Số điện thoại" value={phone} onChange={setPhone} placeholder="+84xxxxxxxxx" />
-      {err && <p className="text-rose-400 text-sm">{err}</p>}
-      <button className="w-full rounded-xl bg-indigo-600 py-2 font-medium">Gửi email đặt lại mật khẩu</button>
-    </form>
-  );
-}
+    <div className="min-h-screen flex items-center justify-center bg-[#080e1a]">
+      <div className="w-full max-w-md rounded-2xl bg-neutral-900/80 p-6 border border-white/10">
+        <h1 className="text-center text-2xl font-semibold"><span className="text-white">TOOL</span><span className="text-indigo-400">MONIQ</span></h1>
+        <p className="text-center text-xs text-neutral-400 mt-1">Đăng nhập để vào TOOLMONIQ</p>
 
-function Input({ label, type='text', value, onChange, placeholder }) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-xs text-neutral-400">{label}</div>
-      <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-        className="w-full rounded-xl bg-neutral-800 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-indigo-500"/>
-    </label>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+          <button className={`rounded-lg py-2 ${tab==='login'?'bg-indigo-600 text-white':'bg-neutral-800 text-neutral-300'}`} onClick={()=>setTab('login')}>Đăng nhập</button>
+          <button className={`rounded-lg py-2 ${tab==='register'?'bg-indigo-600 text-white':'bg-neutral-800 text-neutral-300'}`} onClick={()=>setTab('register')}>Đăng ký</button>
+          <button className={`rounded-lg py-2 ${tab==='reset'?'bg-indigo-600 text-white':'bg-neutral-800 text-neutral-300'}`} onClick={()=>setTab('reset')}>Quên mật khẩu</button>
+        </div>
+
+        <div className="mt-4 space-y-3 text-sm">
+          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Số điện thoại" className="w-full rounded-lg bg-neutral-800 border border-white/10 px-3 py-2 text-white"/>
+          {(tab!=='reset') && (
+            <>
+              <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email khôi phục (đăng ký)" className="w-full rounded-lg bg-neutral-800 border border-white/10 px-3 py-2 text-white"/>
+              <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Mật khẩu" className="w-full rounded-lg bg-neutral-800 border border-white/10 px-3 py-2 text-white"/>
+              <label className="flex items-center gap-2 text-neutral-300">
+                <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> Lưu tài khoản/mật khẩu (trừ khi bạn tắt chọn)
+              </label>
+            </>
+          )}
+        </div>
+
+        <button onClick={tab==='login'?handleLogin: tab==='register'?handleRegister:handleReset}
+                className="mt-4 w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white py-2">
+          {tab==='login'?'Gửi OTP & Đăng nhập (email/pwd)': tab==='register'?'Đăng ký':'Gửi email đặt lại mật khẩu'}
+        </button>
+
+        <div className="mt-3 text-xs text-rose-400 min-h-[18px]">{msg}</div>
+        <div className="mt-2 text-[10px] text-neutral-500 text-center">Nguồn trang: <b>TOOLMONIQ-ByLiamNguyen</b></div>
+      </div>
+    </div>
   );
 }
