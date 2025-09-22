@@ -31,6 +31,7 @@ export default function Dashboard(){
       </div>
 
       <div className="mx-auto max-w-[1500px] px-5 grid grid-cols-1 xl:grid-cols-4 gap-4">
+        {/* Chart rộng hơn: chiếm 3 cột */}
         <section className="xl:col-span-3 rounded-2xl border border-white/10 bg-neutral-900/40 overflow-hidden">
           <div className="p-4 text-neutral-300">Biểu đồ nến (Moniq)</div>
           <iframe
@@ -39,7 +40,9 @@ export default function Dashboard(){
             className="w-full h-[760px] bg-black"
             referrerPolicy="no-referrer"
           />
-          <div className="p-3 text-[11px] text-neutral-500">© TOOLMONIQ — for educational use only. • Nguồn trang: <b>TOOLMONIQ-ByLiamNguyen</b></div>
+          <div className="p-3 text-[11px] text-neutral-500">
+            © TOOLMONIQ — for educational use only. • Nguồn trang: <b>TOOLMONIQ-ByLiamNguyen</b>
+          </div>
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-neutral-900/60 p-5">
