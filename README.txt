@@ -1,16 +1,18 @@
-TOOLMONIQ — Fixed files pack
+Fix for "Rollup failed to resolve import 'firebase/auth'":
 
-Included:
-- package.json      (valid JSON, pinned Node 20.x, Vite + React + Tailwind deps)
-- vercel.json       (SPA rewrite only)
-- vite.config.js    (minimal config for Vite + React)
+Two ways to fix:
+A) Install Firebase (recommended)
+   - This pack's package.json adds: "firebase": "^10.12.3"
+   - After overwriting, run `npm i` (locally) or redeploy on Vercel.
 
-How to apply:
-1) Unzip into the ROOT of your project (same folder as your current package.json) and overwrite.
-2) In Vercel > Project > Settings:
-   - Framework Preset: Vite
-   - Build Command: npm run build
-   - Output Directory: dist
-3) If you use an ENV for the chart:
-   - Add VITE_MONIQ_CHART_URL in Vercel Environment Variables.
-4) Redeploy.
+Optional (safer at runtime):
+- Use src/lib/firebaseSafe.js instead of importing firebase directly.
+  Example:
+    // BEFORE
+    // import { getAuth } from 'firebase/auth'
+    // AFTER
+    import { auth } from './lib/firebaseSafe'
+  And check `if (!auth) { ... }` when Firebase envs are not set.
+
+If you want to keep existing imports but avoid runtime usage,
+you can still just install the firebase package and set your VITE_FIREBASE_* envs later.
