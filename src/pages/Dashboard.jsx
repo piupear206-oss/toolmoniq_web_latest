@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo.jsx';
@@ -6,12 +5,10 @@ import * as sessionLib from '../lib/session';
 
 export default function Dashboard(){
   const nav = useNavigate();
-  const [session, setSession] = useState(sessionLib.getSession());
+  const [session] = useState(sessionLib.getSession());
 
   useEffect(function(){
-    if (!session) {
-      nav('/auth');
-    }
+    if (!session) nav('/auth');
   }, [session, nav]);
 
   if (!session) return null;

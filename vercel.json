@@ -1,8 +1,7 @@
 {
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/"
-    }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "functions": {
+    "api/**/*.js":  { "runtime": "nodejs20.x" },
+    "api/**/*.mjs": { "runtime": "nodejs20.x" }
+  }
 }
