@@ -1,123 +1,21 @@
-import React, { useEffect, useState } from 'react';
+// src/pages/Dashboard.jsx
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import Logo from '../components/Logo.jsx';
-import * as sessionLib from '../lib/session';
 
 export default function Dashboard(){
   const nav = useNavigate();
-  const [session] = useState(sessionLib.getSession());
-
-  useEffect(function(){
-    if (!session) nav('/auth');
-  }, [session, nav]);
-
-  if (!session) return null;
-
-  function onLogout(){
-    try { sessionLib.clearSession(); } catch (e) {}
-    nav('/auth');
-  }
-
   return (
-    <main className="min-h-screen">
-      <div className="mx-auto max-w-[1500px] px-5 py-4 flex items-center justify-between">
-        <Logo />
-        <div className="flex items-center gap-3 text-sm">
-          <span className="px-2 py-1 rounded-lg bg-neutral-800 text-neutral-300">
-            {session && session.role ? session.role : 'Member'}
-          </span>
-          <button
-            className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white"
-            onClick={onLogout}>
-            Đăng xuất
-          </button>
+    <main style={{minHeight:'100vh',background:'#0b1220',display:'grid',placeItems:'center',color:'#e5e7eb',fontFamily:'system-ui,Segoe UI,Roboto,Arial'}}>
+      <div style={{width:960,background:'#111827',border:'1px solid #334155',borderRadius:16,padding:18}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <h2 style={{margin:0}}><b style={{color:'#fff'}}>TOOL</b><span style={{color:'#a78bfa'}}>MONIQ</span></h2>
+          <button onClick={()=>nav('/auth')} style={{padding:'6px 10px',borderRadius:10,background:'#ef4444',border:'none',color:'#fff'}}>Đăng xuất (demo)</button>
         </div>
-      </div>
-
-      <div className="mx-auto max-w-[1500px] px-5 grid grid-cols-1 xl:grid-cols-4 gap-4">
-        <section className="xl:col-span-3 rounded-2xl border border-white/10 bg-neutral-900/40 overflow-hidden">
-          <div className="p-4 text-neutral-300">Biểu đồ nến (Moniq)</div>
-          <iframe
-            title="Moniq Candle Chart"
-            src={import.meta.env.VITE_MONIQ_CHART_URL}
-            className="w-full h-[760px] bg-black"
-            referrerPolicy="no-referrer"
-          />
-          <div className="p-3 text-[11px] text-neutral-500">
-            © TOOLMONIQ — for educational use only. • Nguồn trang: <b>TOOLMONIQ-ByLiamNguyen</b>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-white/10 bg-neutral-900/60 p-5">
-          <PredictionPanel />
-        </section>
+        <div style={{marginTop:12,padding:18,background:'#0f172a',border:'1px solid #334155',borderRadius:12}}>
+          <div style={{fontSize:18,color:'#a78bfa'}}>Dashboard shell OK</div>
+          <div style={{fontSize:13,opacity:.7,marginTop:6}}>Trang chính đang render bình thường. Hãy thay iframe biểu đồ & panel dự đoán vào đây.</div>
+        </div>
       </div>
     </main>
-  );
-}
-
-function PredictionPanel(){
-  const [locked, setLocked] = useState(null);
-  const [stats, setStats] = useState(function(){
-    try {
-      const raw = localStorage.getItem('moniq_stats');
-      return raw ? JSON.parse(raw) : { correct:0, total:0 };
-    } catch (e) {
-      return { correct:0, total:0 };
-    }
-  });
-  const [countdown, setCountdown] = useState('—s');
-
-  useEffect(function(){
-    function loop(){
-      const s = new Date().getUTCSeconds() || 60;
-      const remain = 60 - s;
-      setCountdown(remain + 's');
-      if (!locked && s === 1) {
-        setLocked(Math.random() > 0.5 ? 'BUY' : 'SELL');
-      }
-      if (s === 60 && locked) {
-        const up = Math.random() > 0.5;
-        const correct = (up && locked === 'BUY') || (!up && locked === 'SELL');
-        const ns = { correct: stats.correct + (correct ? 1 : 0), total: stats.total + 1 };
-        setStats(ns);
-        try { localStorage.setItem('moniq_stats', JSON.stringify(ns)); } catch (e) {}
-        setLocked(null);
-      }
-      requestAnimationFrame(loop);
-    }
-    const id = requestAnimationFrame(loop);
-    return function(){ cancelAnimationFrame(id); };
-  }, [locked, stats]);
-
-  const pct = stats.total > 0 ? ((stats.correct / stats.total) * 100).toFixed(1) : '—';
-
-  return (
-    <div>
-      <div className="mb-4">
-        <div className="text-neutral-300">Dự đoán cây nến kế tiếp</div>
-        <div className={
-          "mt-2 text-3xl font-semibold " +
-          (locked === 'BUY' ? 'text-emerald-400' : (locked === 'SELL' ? 'text-rose-400' : 'text-amber-400'))
-        }>
-          {locked || 'Đang phân tích…'}
-        </div>
-        <div className="mt-1 text-xs text-neutral-400">Đóng nến sau: <span className="font-mono">{countdown}</span></div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Kpi label="Đã đúng" value={stats.correct + '/' + stats.total} />
-        <Kpi label="Tỷ lệ đúng" value={pct + '%'} />
-      </div>
-    </div>
-  );
-}
-
-function Kpi(props) {
-  return (
-    <div className="rounded-xl bg-neutral-800/40 p-3">
-      <div className="text-xs text-neutral-400">{props.label}</div>
-      <div className="text-lg text-neutral-100">{props.value}</div>
-    </div>
   );
 }
