@@ -9,14 +9,14 @@ export default function AuthPage(){
 
   function demoLogin(e){
     e.preventDefault();
-    nav('/'); // demo: chuyển sang Dashboard
+    nav('/dashboard'); // demo: chuyển sang trang dashboard
   }
 
   return (
     <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#0b1220',color:'#e5e7eb',fontFamily:'system-ui,Segoe UI,Roboto,Arial'}}>
       <form onSubmit={demoLogin} style={{width:360,background:'#111827',border:'1px solid #334155',borderRadius:14,padding:18}}>
         <h2 style={{margin:'4px 0 10px',fontSize:20}}><b style={{color:'#fff'}}>TOOL</b><span style={{color:'#a78bfa'}}>MONIQ</span></h2>
-        <div style={{fontSize:12,opacity:.7,marginBottom:12}}>Đăng nhập (bản test hiển thị)</div>
+        <div style={{fontSize:12,opacity:.7,marginBottom:12}}>Đăng nhập (demo hiển thị)</div>
         <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email"
                style={{width:'100%',padding:'9px 10px',borderRadius:10,background:'#0f172a',border:'1px solid #334155',color:'#e5e7eb',marginBottom:10}}/>
         <input value={password} type="password" onChange={e=>setPassword(e.target.value)} placeholder="Mật khẩu"
