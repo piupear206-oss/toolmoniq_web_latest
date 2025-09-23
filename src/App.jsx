@@ -8,7 +8,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Mặc định đưa về /auth để luôn thấy màn hình đăng nhập */}
+        {/* Ép mặc định về /auth để luôn thấy trang đăng nhập */}
         <Route path="/" element={<Navigate to="/auth" replace />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
