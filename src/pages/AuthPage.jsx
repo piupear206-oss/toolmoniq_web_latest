@@ -12,91 +12,148 @@ export default function AuthPage(){
   const [newPwd, setNewPwd] = React.useState('');
   const [msg, setMsg] = React.useState('');
 
-  const onLogin = (e)=>{
-    e.preventDefault();
-    setMsg('Đăng nhập (demo): sẽ điều hướng vào trang chính.');
-    nav('/dashboard');
-  };
-  const onRegister = (e)=>{
-    e.preventDefault();
-    setMsg('Đăng ký (demo): hãy chuyển sang tab Đăng nhập để vào trang.');
-    setTab('login');
-  };
-  const onSendOtp = ()=>{
-    setMsg('Đã gửi OTP (demo).');
-  };
-  const onResetPwd = (e)=>{
-    e.preventDefault();
-    setMsg('Cập nhật mật khẩu (demo): hãy đăng nhập với mật khẩu mới.');
-    setTab('login');
-  };
+  const onLogin = (e)=>{ e.preventDefault(); nav('/dashboard'); };
+  const onRegister = (e)=>{ e.preventDefault(); setMsg('Đăng ký (demo) thành công. Hãy đăng nhập.'); setTab('login'); };
+  const onSendOtp = ()=> setMsg('Đã gửi OTP (demo).');
+  const onResetPwd = (e)=>{ e.preventDefault(); setMsg('Đã cập nhật mật khẩu (demo). Hãy đăng nhập.'); setTab('login'); };
 
   return (
-    <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#0b1220',color:'#e5e7eb',fontFamily:'system-ui,Segoe UI,Roboto,Arial'}}>
-      <div style={{width:380,background:'#111827',border:'1px solid #334155',borderRadius:14,padding:18}}>
-        <h2 style={{margin:'4px 0 14px',fontSize:22}}><b style={{color:'#fff'}}>TOOL</b><span style={{color:'#a78bfa'}}>MONIQ</span></h2>
+    <div style={styles.screen}>
+      {/* Animated AI/tech background */}
+      <BackgroundFX />
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
-          <button onClick={()=>setTab('login')}  style={btn(tab==='login')}>Đăng nhập</button>
-          <button onClick={()=>setTab('register')} style={btn(tab==='register')}>Đăng ký</button>
-          <button onClick={()=>setTab('forgot')} style={btn(tab==='forgot')}>Quên mật khẩu</button>
+      <div style={styles.wrapper}>
+        <div style={styles.card}>
+          <div style={styles.logoRow}>
+            <span style={styles.logoBold}>TOOL</span>
+            <span style={styles.logoLite}>MONIQ</span>
+          </div>
+
+          <div style={styles.tabs}>
+            <button onClick={()=>setTab('login')}    style={{...styles.tabBtn, ...(tab==='login'?styles.tabActive:{} )}}>Đăng nhập</button>
+            <button onClick={()=>setTab('register')} style={{...styles.tabBtn, ...(tab==='register'?styles.tabActive:{} )}}>Đăng ký</button>
+            <button onClick={()=>setTab('forgot')}   style={{...styles.tabBtn, ...(tab==='forgot'?styles.tabActive:{} )}}>Quên mật khẩu</button>
+          </div>
+
+          {tab==='login' && (
+            <form onSubmit={onLogin}>
+              <Input value={email} setValue={setEmail} placeholder="Email" />
+              <Input value={password} setValue={setPassword} placeholder="Mật khẩu" type="password" />
+              <button type="submit" style={styles.cta}>Đăng nhập</button>
+            </form>
+          )}
+
+          {tab==='register' && (
+            <form onSubmit={onRegister}>
+              <Input value={email} setValue={setEmail} placeholder="Email" />
+              <Input value={password} setValue={setPassword} placeholder="Mật khẩu (≥6 ký tự)" type="password" />
+              <button type="submit" style={styles.cta}>Đăng ký</button>
+            </form>
+          )}
+
+          {tab==='forgot' && (
+            <form onSubmit={onResetPwd}>
+              <Input value={otpEmail} setValue={setOtpEmail} placeholder="Email cần khôi phục" />
+              <div style={{display:'flex',gap:10}}>
+                <button type="button" onClick={onSendOtp} style={{...styles.cta,flex:1}}>Gửi OTP</button>
+              </div>
+              <Input value={otp} setValue={setOtp} placeholder="Mã OTP" />
+              <Input value={newPwd} setValue={setNewPwd} placeholder="Mật khẩu mới (≥6 ký tự)" type="password" />
+              <button type="submit" style={styles.cta}>Cập nhật mật khẩu</button>
+            </form>
+          )}
+
+          <div style={styles.msg}>{msg}</div>
+          <div style={styles.footer}>Nguồn: <b>TOOLMONIQ-ByLiamNguyen</b></div>
         </div>
-
-        {tab==='login' && (
-          <form onSubmit={onLogin}>
-            <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email"
-              style={inp}/>
-            <input value={password} type="password" onChange={e=>setPassword(e.target.value)} placeholder="Mật khẩu"
-              style={inp}/>
-            <button type="submit" style={cta}>Đăng nhập</button>
-          </form>
-        )}
-
-        {tab==='register' && (
-          <form onSubmit={onRegister}>
-            <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email"
-              style={inp}/>
-            <input value={password} type="password" onChange={e=>setPassword(e.target.value)} placeholder="Mật khẩu (≥6 ký tự)"
-              style={inp}/>
-            <button type="submit" style={cta}>Đăng ký</button>
-          </form>
-        )}
-
-        {tab==='forgot' && (
-          <form onSubmit={onResetPwd}>
-            <input value={otpEmail} onChange={e=>setOtpEmail(e.target.value)} placeholder="Email cần khôi phục"
-              style={inp}/>
-            <div style={{display:'flex',gap:8,marginBottom:10}}>
-              <button type="button" onClick={onSendOtp} style={{...cta,flex:1}}>Gửi OTP</button>
-            </div>
-            <input value={otp} onChange={e=>setOtp(e.target.value)} placeholder="Mã OTP" style={inp}/>
-            <input value={newPwd} type="password" onChange={e=>setNewPwd(e.target.value)} placeholder="Mật khẩu mới (≥6 ký tự)"
-              style={inp}/>
-            <button type="submit" style={cta}>Cập nhật mật khẩu</button>
-          </form>
-        )}
-
-        <div style={{minHeight:18,marginTop:8,fontSize:12,color:'#fca5a5'}}>{msg}</div>
-        <div style={{fontSize:11,opacity:.6,marginTop:10,textAlign:'center'}}>Nguồn: <b>TOOLMONIQ-ByLiamNguyen</b></div>
       </div>
+
+      <StyleTag />
     </div>
   );
 }
 
-const inp = {
-  width:'100%',padding:'10px 12px',borderRadius:10,
-  background:'#0f172a',border:'1px solid #334155',color:'#e5e7eb',
-  marginBottom:10
-};
-const cta = {
-  width:'100%',padding:'10px 12px',borderRadius:10,
-  background:'#6366f1',border:'none',color:'#fff',cursor:'pointer'
-};
-function btn(active){
-  return {
-    padding:'8px 12px',borderRadius:10,cursor:'pointer',
-    background: active ? '#6366f1' : '#0f172a',
-    color: active ? '#fff' : '#cbd5e1',
-    border:'1px solid #334155'
-  };
+function Input({value, setValue, placeholder, type='text'}){
+  return (
+    <div style={styles.inputRow}>
+      <input
+        value={value}
+        onChange={e=>setValue(e.target.value)}
+        placeholder={placeholder}
+        type={type}
+        style={styles.input}
+      />
+    </div>
+  );
 }
+
+function BackgroundFX(){
+  return (
+    <>
+      {/* radial gradient glows */}
+      <div className="glow glow-1"></div>
+      <div className="glow glow-2"></div>
+      {/* grid */}
+      <svg className="gridfx" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <pattern id="tinyGrid" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(148,163,184,.2)" strokeWidth="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="100" height="100" fill="url(#tinyGrid)" />
+      </svg>
+    </>
+  )
+}
+
+function StyleTag(){
+  return (
+    <style>{`
+      .glow {
+        position: absolute; inset: 0;
+        filter: blur(60px); opacity: .45; pointer-events: none;
+        background: radial-gradient(600px 250px at 20% 20%, rgba(139,92,246,.6), transparent 60%),
+                    radial-gradient(500px 300px at 80% 70%, rgba(34,197,94,.5), transparent 60%),
+                    radial-gradient(400px 200px at 50% 10%, rgba(56,189,248,.5), transparent 60%);
+        animation: float 18s ease-in-out infinite;
+      }
+      .glow-2 {
+        animation-duration: 22s;
+        transform: scale(1.05);
+      }
+      @keyframes float {
+        0%   { transform: translateY(0px) translateX(0px) scale(1); }
+        50%  { transform: translateY(-12px) translateX(6px)  scale(1.02); }
+        100% { transform: translateY(0px) translateX(0px)  scale(1); }
+      }
+      .gridfx {
+        position:absolute; inset:0; opacity:.18; mix-blend-mode:overlay; pointer-events:none;
+      }
+    `}</style>
+  );
+}
+
+const styles = {
+  screen: { minHeight:'100vh', background:'#0b1220', color:'#e5e7eb', position:'relative',
+            fontFamily:'system-ui,Segoe UI,Roboto,Arial' },
+  wrapper: { minHeight:'100vh', display:'grid', placeItems:'center', position:'relative' },
+  card: { width:420, maxWidth:'calc(100% - 32px)', background:'#111827',
+          border:'1px solid #334155', borderRadius:16, padding:20,
+          boxShadow:'0 10px 30px rgba(0,0,0,.35)', position:'relative' },
+  logoRow: { display:'flex', alignItems:'baseline', gap:6, marginBottom:14 },
+  logoBold: { color:'#fff', fontWeight:800, fontSize:22, letterSpacing:.5 },
+  logoLite: { color:'#a78bfa', fontWeight:700, fontSize:22 },
+  tabs: { display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8, marginBottom:14 },
+  tabBtn: { padding:'10px 12px', borderRadius:10, border:'1px solid #334155',
+            background:'#0f172a', color:'#cbd5e1', cursor:'pointer' },
+  tabActive: { background:'#6366f1', color:'#fff', border:'1px solid #6366f1' },
+  inputRow: { marginBottom:10 },
+  input: { width:'100%', padding:'12px 12px', borderRadius:10,
+           background:'#0f172a', border:'1px solid #334155', color:'#e5e7eb',
+           outline:'none', fontSize:14 },
+  cta: { width:'100%', padding:'12px', borderRadius:10,
+         background:'#6366f1', border:'none', color:'#fff', cursor:'pointer',
+         fontWeight:600, marginTop:2 },
+  msg: { minHeight:18, marginTop:8, fontSize:12, color:'#fca5a5' },
+  footer: { fontSize:11, opacity:.7, marginTop:10, textAlign:'center' }
+};
