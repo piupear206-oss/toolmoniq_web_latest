@@ -1,7 +1,7 @@
 {
-  "name": "toolmoniq-web",
+  "name": "toolmoniq",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,10 +11,11 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.23.1"
+    "react-router-dom": "^6.25.0",
+    "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.0"
+    "vite": "^5.3.5",
+    "@vitejs/plugin-react": "^4.3.1"
   }
 }
