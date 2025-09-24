@@ -1,13 +1,16 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-function Diagnostics(){ return <div className="err">App route OK — nếu bạn thấy trang này, router vẫn chạy. Đi tới <a href="/auth">/auth</a>.</div> }
+import AuthPage from './pages/AuthPage.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+
 export default function App(){
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Diagnostics/>} />
-        <Route path="/auth" element={<div className="err">Auth route OK — render trang AuthPage.jsx của bạn tại đây.</div>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Navigate to="/auth" replace />} />
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="*" element={<Navigate to="/auth" replace />} />
       </Routes>
     </BrowserRouter>
   )
