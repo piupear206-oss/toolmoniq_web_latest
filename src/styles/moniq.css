@@ -1,4 +1,0 @@
-/* Ưu tiên click cho iFrame và tránh mọi overlay */
-html, body, #root { height: 100%; }
-.moniq-wrap { position: relative; isolation: isolate; }
-.moniq-frame { display: block; z-index: 1; }
